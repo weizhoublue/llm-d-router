@@ -123,7 +123,8 @@ func InitTracing(ctx context.Context) (func(context.Context) error, error) {
 	return tp.Shutdown, nil
 }
 
-// Tracer returns a tracer for the router.
+
+// Tracer returns a tracer for the llm-d router.
 // The tracer is identified by the instrumentation library name, which is
 // distinct from the service name set during InitTracing().
 func Tracer() trace.Tracer {
