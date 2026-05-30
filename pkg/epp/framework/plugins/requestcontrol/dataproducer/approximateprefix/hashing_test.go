@@ -3,6 +3,7 @@ package approximateprefix
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
@@ -278,6 +279,66 @@ func TestGetContentBlocks(t *testing.T) {
 				{PseudoTokens: repeatBytes(imageHashBytes(base64Image180p2), 16)},
 				{PseudoTokens: repeatBytes(imageHashBytes(base64Image180p2), 3)},
 			},
+			expectErr: false,
+		},
+		{
+			name: "Messages_Text",
+			request: &fwksched.InferenceRequest{
+				Body: &fwkrh.InferenceRequestBody{
+					Messages: &fwkrh.MessagesRequest{
+						Messages: []fwkrh.AnthropicMessage{
+							{Role: "user", Content: fwkrh.AnthropicContent{Raw: "Hello"}},
+						},
+					},
+				},
+			},
+			blockSizeTokens: 16,
+			multimodalCfg:   nil,
+			expectedContentBlocks: func() []HashBlock {
+				rawBytes, _ := json.Marshal([]map[string]interface{}{
+					{"messages": []fwkrh.AnthropicMessage{
+						{Role: "user", Content: fwkrh.AnthropicContent{Raw: "Hello"}},
+					}},
+				})
+				return []HashBlock{{PseudoTokens: rawBytes}}
+			}(),
+			expectErr: false,
+		},
+		{
+			name: "Messages_WithSystemAndTools",
+			request: &fwksched.InferenceRequest{
+				Body: &fwkrh.InferenceRequestBody{
+					Messages: &fwkrh.MessagesRequest{
+						System: fwkrh.AnthropicContent{Raw: "You are helpful."},
+						Tools:  []any{map[string]any{"name": "get_weather"}},
+						Messages: []fwkrh.AnthropicMessage{
+							{Role: "user", Content: fwkrh.AnthropicContent{Raw: "Hello"}},
+						},
+					},
+				},
+			},
+			blockSizeTokens: 16,
+			multimodalCfg:   nil,
+			expectedContentBlocks: func() []HashBlock {
+				rawBytes, _ := json.Marshal([]map[string]interface{}{
+					{"system": "You are helpful."},
+					{"tools": []any{map[string]any{"name": "get_weather"}}},
+					{"messages": []fwkrh.AnthropicMessage{
+						{Role: "user", Content: fwkrh.AnthropicContent{Raw: "Hello"}},
+					}},
+				})
+				// blockSizeTokens=16 * averageCharactersPerToken(4) = 64 bytes per block
+				blockSizeBytes := 16 * averageCharactersPerToken
+				var blocks []HashBlock
+				for i := 0; i < len(rawBytes); i += blockSizeBytes {
+					end := i + blockSizeBytes
+					if end > len(rawBytes) {
+						end = len(rawBytes)
+					}
+					blocks = append(blocks, HashBlock{PseudoTokens: rawBytes[i:end]})
+				}
+				return blocks
+			}(),
 			expectErr: false,
 		},
 		{

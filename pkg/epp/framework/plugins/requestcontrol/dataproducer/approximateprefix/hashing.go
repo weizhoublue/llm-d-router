@@ -143,6 +143,21 @@ func getKVCacheBlocksFromRawPrompt(ctx context.Context, request *scheduling.Infe
 		}
 		return getKVCacheBlocksFromRawBytes(rawBytes, blockSizeTokens), nil
 
+	case request.Body.Messages != nil:
+		var combined []map[string]interface{}
+		if sysText := request.Body.Messages.System.PlainText(); sysText != "" {
+			combined = append(combined, map[string]interface{}{"system": sysText})
+		}
+		if request.Body.Messages.Tools != nil {
+			combined = append(combined, map[string]interface{}{"tools": request.Body.Messages.Tools})
+		}
+		combined = append(combined, map[string]interface{}{"messages": request.Body.Messages.Messages})
+		rawBytes, err := json.Marshal(combined)
+		if err != nil {
+			return nil, errors.New("failed to marshal messages")
+		}
+		return getKVCacheBlocksFromRawBytes(rawBytes, blockSizeTokens), nil
+
 	case request.Body.ChatCompletions != nil:
 		return getKVCacheBlocksFromChatCompletions(ctx, request, blockSizeTokens, tokenEstimator), nil
 
