@@ -682,6 +682,36 @@ func TestValidateDataParallelSize(t *testing.T) {
 	}
 }
 
+func TestValidatePorts(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     string
+		vllmPort string
+		wantErr  bool
+	}{
+		{"valid ports", "8000", "8001", false},
+		{"invalid port format", "abc", "8001", true},
+		{"invalid vllm port format", "8000", "xyz", true},
+		{"port too low", "0", "8001", true},
+		{"port too high", "65536", "8001", true},
+		{"vllm port too low", "8000", "0", true},
+		{"vllm port too high", "8000", "65536", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := NewOptions()
+			opts.Port = tt.port
+			opts.vllmPort = tt.vllmPort
+			_ = opts.Complete()
+			err := opts.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCompleteInferencePoolParsing(t *testing.T) {
 	tests := []struct {
 		name              string
