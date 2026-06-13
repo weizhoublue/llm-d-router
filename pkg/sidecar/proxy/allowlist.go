@@ -58,9 +58,13 @@ type AllowlistValidator struct {
 
 	gvr schema.GroupVersionResource // detected GVR
 
-	// allowedTargets maps hostport -> bool for allowed prefill targets
+	// allowedTargets maps host:port -> bool for allowed prefill targets
 	allowedTargets   set.Set[string]
 	allowedTargetsMu sync.RWMutex
+
+	// poolPorts tracks target ports per InferencePool name
+	poolPorts   map[string][]int
+	poolPortsMu sync.RWMutex
 
 	// watchers for cleanup
 	poolInformer   cache.SharedInformer
@@ -113,6 +117,7 @@ func NewAllowlistValidator(enabled bool, poolGroup, namespace, poolName string) 
 		poolName:       poolName,
 		gvr:            gvr,
 		allowedTargets: set.New[string](),
+		poolPorts:      make(map[string][]int),
 		podInformers:   make(map[string]cache.SharedInformer),
 		podStopChans:   make(map[string]chan struct{}),
 		stopCh:         make(chan struct{}),
@@ -202,9 +207,6 @@ func (av *AllowlistValidator) IsAllowed(hostPort string) bool {
 		return true
 	}
 
-	// Clean up the hostPort input
-	hostPort = extractHost(hostPort)
-
 	av.allowedTargetsMu.RLock()
 	defer av.allowedTargetsMu.RUnlock()
 
@@ -242,6 +244,11 @@ func (av *AllowlistValidator) onInferencePoolDelete(obj interface{}) {
 	delete(av.podInformers, poolName)
 	av.podInformersMu.Unlock()
 
+	// Clean up pool ports
+	av.poolPortsMu.Lock()
+	delete(av.poolPorts, poolName)
+	av.poolPortsMu.Unlock()
+
 	// Remove targets associated with this pool (simplified - removes all and rebuilds)
 	av.rebuildAllowlist()
 }
@@ -257,9 +264,9 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 		return
 	}
 
-	selectorData, found, err := unstructured.NestedMap(spec, "selector")
+	selectorData, found, err := unstructured.NestedMap(spec, "selector", "matchLabels")
 	if err != nil || !found {
-		av.logger.Error(err, "InferencePool missing or invalid selector field", "name", poolName, "found", found)
+		av.logger.Error(err, "InferencePool missing or invalid selector.matchLabels field", "name", poolName, "found", found)
 		return
 	}
 
@@ -268,6 +275,21 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 	for k, v := range selectorData {
 		labelSelector[k] = fmt.Sprintf("%v", v)
 	}
+
+	// Extract target ports from spec.targetPorts
+	var ports []int
+	if tpList, found, _ := unstructured.NestedSlice(spec, "targetPorts"); found {
+		for _, tp := range tpList {
+			if tpMap, ok := tp.(map[string]interface{}); ok {
+				if num, ok := tpMap["number"].(float64); ok {
+					ports = append(ports, int(num))
+				}
+			}
+		}
+	}
+	av.poolPortsMu.Lock()
+	av.poolPorts[poolName] = ports
+	av.poolPortsMu.Unlock()
 
 	// Create or update pod informer for this selector
 	av.createPodInformer(poolName, labelSelector.AsSelector())
@@ -382,14 +404,25 @@ func (av *AllowlistValidator) rebuildAllowlist() {
 // addPodToAllowlist adds a pod's endpoints to the allowlist
 func (av *AllowlistValidator) addPodToAllowlist(pod *unstructured.Unstructured, poolName string) {
 	podIP, _, _ := unstructured.NestedString(pod.Object, "status", "podIP")
-	if podIP != "" {
-		av.allowedTargets.Insert(podIP)
-	}
-
 	podName := pod.GetName()
-	if podName != "" {
-		av.allowedTargets.Insert(podName)
+
+	av.poolPortsMu.RLock()
+	ports := av.poolPorts[poolName]
+	av.poolPortsMu.RUnlock()
+
+	// If no ports are configured, use port 0 as a fallback marker
+	if len(ports) == 0 {
+		ports = []int{0}
 	}
 
-	av.logger.V(5).Info("added pod to allowlist", "pod", podName, "ip", podIP, "pool", poolName)
+	for _, port := range ports {
+		if podIP != "" {
+			av.allowedTargets.Insert(fmt.Sprintf("%s:%d", podIP, port))
+		}
+		if podName != "" {
+			av.allowedTargets.Insert(fmt.Sprintf("%s:%d", podName, port))
+		}
+	}
+
+	av.logger.V(5).Info("added pod to allowlist", "pod", podName, "ip", podIP, "pool", poolName, "ports", ports)
 }
