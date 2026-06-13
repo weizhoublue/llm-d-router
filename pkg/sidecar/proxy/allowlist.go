@@ -300,6 +300,10 @@ func (av *AllowlistValidator) createPodInformer(poolName string, selector labels
 	av.podInformersMu.Lock()
 	defer av.podInformersMu.Unlock()
 
+	if av.dynamicClient == nil {
+		return
+	}
+
 	// Stop existing informer if it exists
 	if _, exists := av.podInformers[poolName]; exists {
 		if stopCh, stopExists := av.podStopChans[poolName]; stopExists {

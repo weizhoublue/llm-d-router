@@ -19,7 +19,7 @@ const ssrfTestLabel = "SSRF"
 func createModelServersPDSSRF(prefillReplicas, decodeReplicas int) []string {
 	return createModelServersFromKustomize(pdDisaggDir, map[string]string{
 		"${KV_CACHE_ENABLED}":     "false",
-		"${CONNECTOR_TYPE}":       "nixl-v2",
+		"${CONNECTOR_TYPE}":       "nixlv2",
 		"${VLLM_REPLICA_COUNT_D}": strconv.Itoa(decodeReplicas),
 		"${VLLM_REPLICA_COUNT_P}": strconv.Itoa(prefillReplicas),
 		// Enable SSRF protection on the sidecar
