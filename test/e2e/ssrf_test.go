@@ -72,15 +72,16 @@ var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
 
 			epp := createEndPointPicker(pdConfig)
 
-			prefillPods, decodePods := getModelServerPods(podSelector, prefillSelector, decodeSelector)
-			gomega.Expect(prefillPods).Should(gomega.HaveLen(prefillReplicas))
-			gomega.Expect(decodePods).Should(gomega.HaveLen(decodeReplicas))
+			// Use pod IPs (not names) because the sidecar needs to connect to the target
+			// and pod names are not DNS-resolvable outside a headless service.
+			prefillPodIPs := getPodIPs(prefillSelector)
+			gomega.Expect(prefillPodIPs).Should(gomega.HaveLen(prefillReplicas))
 
 			// Send a request with a valid prefill header targeting an allowed pod.
 			// The header format is "host:port" where host is the pod IP and port is from the InferencePool targetPorts.
 			// Retry with Eventually because the sidecar's pod informer starts asynchronously and needs
 			// time to discover pods and populate the allowlist after the proxy server begins listening.
-			validHeader := prefillPods[0] + ":8000"
+			validHeader := prefillPodIPs[0] + ":8000"
 			gomega.Eventually(func() int {
 				return sendRequestWithPrefillHeader(validHeader)
 			}, "30s", "1s").Should(gomega.Equal(http.StatusOK),
@@ -99,11 +100,11 @@ var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
 
 			epp := createEndPointPicker(pdConfig)
 
-			prefillPods, _ := getModelServerPods(podSelector, prefillSelector, decodeSelector)
-			gomega.Expect(prefillPods).Should(gomega.HaveLen(prefillReplicas))
+			prefillPodIPs := getPodIPs(prefillSelector)
+			gomega.Expect(prefillPodIPs).Should(gomega.HaveLen(prefillReplicas))
 
 			// Send a request with an invalid port (9999) that is not in the InferencePool targetPorts
-			invalidPortHeader := prefillPods[0] + ":9999"
+			invalidPortHeader := prefillPodIPs[0] + ":9999"
 			statusCode := sendRequestWithPrefillHeader(invalidPortHeader)
 			gomega.Expect(statusCode).Should(gomega.Equal(http.StatusForbidden),
 				"Request with invalid port should be blocked")
