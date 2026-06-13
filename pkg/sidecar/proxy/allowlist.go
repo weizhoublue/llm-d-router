@@ -18,6 +18,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -264,13 +265,6 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 		return
 	}
 
-	// Log spec keys for debugging
-	specKeys := make([]string, 0, len(spec))
-	for k := range spec {
-		specKeys = append(specKeys, k)
-	}
-	av.logger.Info("InferencePool spec keys", "poolName", poolName, "keys", specKeys, "targetPortsRaw", spec["targetPorts"])
-
 	selectorData, found, err := unstructured.NestedMap(spec, "selector", "matchLabels")
 	if err != nil || !found {
 		av.logger.Error(err, "InferencePool missing or invalid selector.matchLabels field", "name", poolName, "found", found)
@@ -283,23 +277,20 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 		labelSelector[k] = fmt.Sprintf("%v", v)
 	}
 
-	// Extract target ports from spec.targetPorts
+	// Extract target ports from spec.targetPorts.
+	// Kubernetes unstructured data can return numbers as float64, int64, int,
+	// or json.Number depending on the decoder path.
 	var ports []int
 	tpRaw, tpExists := spec["targetPorts"]
-	av.logger.Info("targetPorts debug", "poolName", poolName, "tpExists", tpExists, "tpType", fmt.Sprintf("%T", tpRaw), "tpValue", tpRaw)
 	if tpExists {
 		if tpList, ok := tpRaw.([]interface{}); ok {
 			for _, tp := range tpList {
 				if tpMap, ok := tp.(map[string]interface{}); ok {
-					if num, ok := tpMap["number"].(float64); ok {
-						ports = append(ports, int(num))
-					} else {
-						av.logger.Info("targetPorts entry missing number", "entry", tpMap)
+					if port := extractPortNumber(tpMap["number"]); port > 0 {
+						ports = append(ports, port)
 					}
 				}
 			}
-		} else {
-			av.logger.Info("targetPorts is not a slice", "type", fmt.Sprintf("%T", tpRaw))
 		}
 	}
 	av.logger.Info("extracted ports", "poolName", poolName, "ports", ports)
@@ -309,6 +300,27 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 
 	// Create or update pod informer for this selector
 	av.createPodInformer(poolName, labelSelector.AsSelector())
+}
+
+// extractPortNumber handles the various numeric types that Kubernetes unstructured
+// data may produce (float64, int64, int, json.Number).
+func extractPortNumber(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int64:
+		return int(n)
+	case int:
+		return n
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(i)
+	default:
+		return 0
+	}
 }
 
 // createPodInformer creates a new pod informer for the given selector
