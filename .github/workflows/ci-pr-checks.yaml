@@ -378,7 +378,7 @@ jobs:
       matrix:
         suite:
           - name: pd
-            label-filter: "!Disruptive && !Extended && !SharedStorage && !Metrics"
+            label-filter: "!Disruptive && !Extended && !SharedStorage && !Metrics && !SSRF"
             needs-renderer: "false"
           - name: pd-shared-storage-deprecated
             label-filter: "SharedStorage && DeprecatedPD"
