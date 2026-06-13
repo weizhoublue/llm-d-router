@@ -22,8 +22,9 @@ func createModelServersPDSSRF(prefillReplicas, decodeReplicas int) []string {
 		"${CONNECTOR_TYPE}":       "nixlv2",
 		"${VLLM_REPLICA_COUNT_D}": strconv.Itoa(decodeReplicas),
 		"${VLLM_REPLICA_COUNT_P}": strconv.Itoa(prefillReplicas),
-		// Enable SSRF protection on the sidecar
-		"${SIDECAR_EXTRA_ARGS}": "--enable-ssrf-protection=true --inference-pool=" + poolName,
+		// Enable SSRF protection on the sidecar (bool flag must be separate from value flags)
+		"${SIDECAR_EXTRA_ARGS}":       "--inference-pool=" + poolName,
+		"${SIDECAR_EXTRA_ARGS_BOOL}": "--enable-ssrf-protection",
 	})
 }
 
