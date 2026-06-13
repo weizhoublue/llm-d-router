@@ -264,6 +264,13 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 		return
 	}
 
+	// Log spec keys for debugging
+	specKeys := make([]string, 0, len(spec))
+	for k := range spec {
+		specKeys = append(specKeys, k)
+	}
+	av.logger.Info("InferencePool spec keys", "poolName", poolName, "keys", specKeys, "targetPortsRaw", spec["targetPorts"])
+
 	selectorData, found, err := unstructured.NestedMap(spec, "selector", "matchLabels")
 	if err != nil || !found {
 		av.logger.Error(err, "InferencePool missing or invalid selector.matchLabels field", "name", poolName, "found", found)
@@ -278,15 +285,21 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 
 	// Extract target ports from spec.targetPorts
 	var ports []int
-	tpList, found, _ := unstructured.NestedSlice(spec, "targetPorts")
-	av.logger.Info("extracting targetPorts", "poolName", poolName, "found", found, "tpList", tpList)
-	if found {
-		for _, tp := range tpList {
-			if tpMap, ok := tp.(map[string]interface{}); ok {
-				if num, ok := tpMap["number"].(float64); ok {
-					ports = append(ports, int(num))
+	tpRaw, tpExists := spec["targetPorts"]
+	av.logger.Info("targetPorts debug", "poolName", poolName, "tpExists", tpExists, "tpType", fmt.Sprintf("%T", tpRaw), "tpValue", tpRaw)
+	if tpExists {
+		if tpList, ok := tpRaw.([]interface{}); ok {
+			for _, tp := range tpList {
+				if tpMap, ok := tp.(map[string]interface{}); ok {
+					if num, ok := tpMap["number"].(float64); ok {
+						ports = append(ports, int(num))
+					} else {
+						av.logger.Info("targetPorts entry missing number", "entry", tpMap)
+					}
 				}
 			}
+		} else {
+			av.logger.Info("targetPorts is not a slice", "type", fmt.Sprintf("%T", tpRaw))
 		}
 	}
 	av.logger.Info("extracted ports", "poolName", poolName, "ports", ports)
