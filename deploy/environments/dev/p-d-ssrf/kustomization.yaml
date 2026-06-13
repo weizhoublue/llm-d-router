@@ -3,6 +3,10 @@
 #
 # Deploys the full dev stack with separate prefill and decode deployments,
 # with SSRF protection enabled on the sidecar.
+#
+# To enable SSRF, set SIDECAR_EXTRA_ARGS before building:
+#   kustomize build --load-restrictor=none . | \
+#     sed 's|${SIDECAR_EXTRA_ARGS}|--enable-ssrf-protection=true --inference-pool=MODEL_NAME-inference-pool|g'
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -13,7 +17,6 @@ resources:
 
 patches:
 - path: ../p-d/patch-decode.yaml
-- path: ../p-d/patch-ssrf.yaml
 
 components:
 - ../../../components/overlays/simulator/
