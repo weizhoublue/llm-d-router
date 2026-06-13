@@ -17,14 +17,15 @@ const ssrfTestLabel = "SSRF"
 
 // createModelServersPDSSRF creates model servers with SSRF protection enabled on the sidecar.
 func createModelServersPDSSRF(prefillReplicas, decodeReplicas int) []string {
-	// The sidecar RBAC binds to ServiceAccount "llm-d-sidecar-ssrf"; create it if absent.
-	saManifest := `apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: llm-d-sidecar-ssrf
-  namespace: ` + nsName
+	// Apply SSRF RBAC (ClusterRole + ClusterRoleBinding for InferencePool/Pod watch).
+	rbacDocs := testutils.ReadYaml("../../deploy/components/vllm-decode/rbac-ssrf.yaml")
+	for i, doc := range rbacDocs {
+		rbacDocs[i] = strings.ReplaceAll(doc, "${POOL_NAME}", poolName)
+		rbacDocs[i] = strings.ReplaceAll(rbacDocs[i], "${NAMESPACE}", nsName)
+	}
+	testutils.CreateObjsFromYaml(testConfig, rbacDocs)
 
-	manifests := createModelServersFromKustomize(pdDisaggDir, map[string]string{
+	return createModelServersFromKustomize(pdDisaggDir, map[string]string{
 		"${KV_CACHE_ENABLED}":     "false",
 		"${CONNECTOR_TYPE}":       "nixlv2",
 		"${VLLM_REPLICA_COUNT_D}": strconv.Itoa(decodeReplicas),
@@ -33,20 +34,6 @@ metadata:
 		"${SIDECAR_EXTRA_ARGS}":      "--inference-pool=" + poolName,
 		"${SIDECAR_EXTRA_ARGS_BOOL}": "--enable-ssrf-protection",
 	})
-
-	// Inject serviceAccountName into the vllm-d Deployment so the sidecar uses
-	// the SA that the ClusterRoleBinding grants InferencePool/Pod watch permissions.
-	for i, m := range manifests {
-		if strings.Contains(m, "kind: Deployment") && strings.Contains(m, "name: vllm-d") {
-			manifests[i] = strings.Replace(m,
-				"      initContainers:",
-				"      serviceAccountName: llm-d-sidecar-ssrf\n      initContainers:",
-				1)
-			break
-		}
-	}
-
-	return append([]string{saManifest}, manifests...)
 }
 
 // sendRequestWithPrefillHeader sends a chat completion request with the X-Prefiller-Host-Port header
