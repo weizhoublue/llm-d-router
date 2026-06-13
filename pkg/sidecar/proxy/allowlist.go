@@ -278,7 +278,9 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 
 	// Extract target ports from spec.targetPorts
 	var ports []int
-	if tpList, found, _ := unstructured.NestedSlice(spec, "targetPorts"); found {
+	tpList, found, _ := unstructured.NestedSlice(spec, "targetPorts")
+	av.logger.Info("extracting targetPorts", "poolName", poolName, "found", found, "tpList", tpList)
+	if found {
 		for _, tp := range tpList {
 			if tpMap, ok := tp.(map[string]interface{}); ok {
 				if num, ok := tpMap["number"].(float64); ok {
@@ -287,6 +289,7 @@ func (av *AllowlistValidator) updatePodsForPool(poolObj *unstructured.Unstructur
 			}
 		}
 	}
+	av.logger.Info("extracted ports", "poolName", poolName, "ports", ports)
 	av.poolPortsMu.Lock()
 	av.poolPorts[poolName] = ports
 	av.poolPortsMu.Unlock()
