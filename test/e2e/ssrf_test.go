@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+
 	testutils "github.com/llm-d/llm-d-router/test/utils"
 )
 
@@ -18,19 +20,19 @@ func createModelServersPDSSRF(prefillReplicas, decodeReplicas int) []string {
 	return createModelServersFromKustomize(pdDisaggDir, map[string]string{
 		"${KV_CACHE_ENABLED}":     "false",
 		"${CONNECTOR_TYPE}":       "nixl-v2",
-		"${VLLM_REPLICA_COUNT_D}": fmt.Sprintf("%d", decodeReplicas),
-		"${VLLM_REPLICA_COUNT_P}": fmt.Sprintf("%d", prefillReplicas),
+		"${VLLM_REPLICA_COUNT_D}": strconv.Itoa(decodeReplicas),
+		"${VLLM_REPLICA_COUNT_P}": strconv.Itoa(prefillReplicas),
 		// Enable SSRF protection on the sidecar
 		"${SIDECAR_EXTRA_ARGS}": "--enable-ssrf-protection=true --inference-pool=" + poolName,
 	})
 }
 
 // sendRequestWithPrefillHeader sends a chat completion request with the X-Prefiller-Host-Port header
-// set to the specified value. Returns the HTTP status code and response body.
-func sendRequestWithPrefillHeader(prefillHeader string) (int, []byte) {
+// set to the specified value. Returns the HTTP status code.
+func sendRequestWithPrefillHeader(prefillHeader string) int {
 	body := fmt.Sprintf(`{"model":"%s","messages":[{"role":"user","content":"test"}],"max_tokens":10}`, simModelName)
 	req, err := http.NewRequest(http.MethodPost,
-		fmt.Sprintf("http://localhost:%s/v1/chat/completions", port),
+		"http://localhost:"+port+"/v1/chat/completions",
 		strings.NewReader(body))
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 	req.Header.Set("Content-Type", "application/json")
@@ -44,10 +46,10 @@ func sendRequestWithPrefillHeader(prefillHeader string) (int, []byte) {
 		_ = resp.Body.Close()
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	return resp.StatusCode, respBody
+	return resp.StatusCode
 }
 
 var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
@@ -67,8 +69,8 @@ var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
 
 			// Send a request with a valid prefill header targeting an allowed pod
 			// The header format is "host:port" where host is the pod IP and port is from the InferencePool targetPorts
-			validHeader := fmt.Sprintf("%s:8000", prefillPods[0])
-			statusCode, _ := sendRequestWithPrefillHeader(validHeader)
+			validHeader := prefillPods[0] + ":8000"
+			statusCode := sendRequestWithPrefillHeader(validHeader)
 			gomega.Expect(statusCode).Should(gomega.Equal(http.StatusOK),
 				"Request with valid prefill header should be allowed")
 
@@ -89,8 +91,8 @@ var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
 			gomega.Expect(prefillPods).Should(gomega.HaveLen(prefillReplicas))
 
 			// Send a request with an invalid port (9999) that is not in the InferencePool targetPorts
-			invalidPortHeader := fmt.Sprintf("%s:9999", prefillPods[0])
-			statusCode, _ := sendRequestWithPrefillHeader(invalidPortHeader)
+			invalidPortHeader := prefillPods[0] + ":9999"
+			statusCode := sendRequestWithPrefillHeader(invalidPortHeader)
 			gomega.Expect(statusCode).Should(gomega.Equal(http.StatusForbidden),
 				"Request with invalid port should be blocked")
 
@@ -109,7 +111,7 @@ var _ = ginkgo.Describe("SSRF Protection", ginkgo.Label(ssrfTestLabel), func() {
 
 			// Send a request with an invalid host that is not in the allowlist
 			invalidHostHeader := "192.168.99.99:8000"
-			statusCode, _ := sendRequestWithPrefillHeader(invalidHostHeader)
+			statusCode := sendRequestWithPrefillHeader(invalidHostHeader)
 			gomega.Expect(statusCode).Should(gomega.Equal(http.StatusForbidden),
 				"Request with invalid host should be blocked")
 

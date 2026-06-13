@@ -392,6 +392,9 @@ jobs:
           - name: extended
             label-filter: "Extended"
             needs-renderer: "true"
+          - name: ssrf
+            label-filter: "SSRF"
+            needs-renderer: "false"
           - name: disruption
             label-filter: "Disruptive"
             needs-renderer: "false"
