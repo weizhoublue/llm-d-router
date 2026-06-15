@@ -34,3 +34,12 @@ func GetCollectors() []prometheus.Collector {
 func DeleteSharedSeries(id string) {
 	avgWaitTimeMs.DeleteLabelValues(id)
 }
+
+// registerCollectorSafe registers a collector, ignoring prometheus.AlreadyRegisteredError.
+func registerCollectorSafe(reg prometheus.Registerer, c prometheus.Collector) {
+	if err := reg.Register(c); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			panic(err)
+		}
+	}
+}

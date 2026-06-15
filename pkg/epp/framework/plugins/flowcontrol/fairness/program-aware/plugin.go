@@ -93,10 +93,10 @@ func ProgramAwarePluginFactory(name string, parameters *json.Decoder, handle plu
 	if handle != nil {
 		if reg := handle.Metrics(); reg != nil {
 			for _, c := range GetCollectors() {
-				reg.MustRegister(c)
+				registerCollectorSafe(reg, c)
 			}
 			for _, c := range strategy.Collectors() {
-				reg.MustRegister(c)
+				registerCollectorSafe(reg, c)
 			}
 		}
 		if cfg.EvictionTTLSeconds > 0 {

@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol"
 	fwkfcmocks "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/flowcontrol/mocks"
+	fwkplugin "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/plugin"
 	fwkrc "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/requestcontrol"
 	fwksched "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/scheduling"
 	"github.com/llm-d/llm-d-router/pkg/epp/metadata"
@@ -254,4 +256,19 @@ func TestGetOrCreateMetrics_Idempotent(t *testing.T) {
 	a := p.getOrCreateMetrics("alpha")
 	b := p.getOrCreateMetrics("alpha")
 	assert.Same(t, a, b)
+}
+
+func TestFactory_MultipleInstances_PrometheusRegistry(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	handle := fwkplugin.NewEppHandle(context.Background(), nil, fwkplugin.WithMetricsRecorder(reg))
+
+	// First instance creation: should succeed
+	p1, err := ProgramAwarePluginFactory("instance-1", nil, handle)
+	require.NoError(t, err)
+	require.NotNil(t, p1)
+
+	// Second instance creation: should succeed without panic
+	p2, err := ProgramAwarePluginFactory("instance-2", nil, handle)
+	require.NoError(t, err)
+	require.NotNil(t, p2)
 }
