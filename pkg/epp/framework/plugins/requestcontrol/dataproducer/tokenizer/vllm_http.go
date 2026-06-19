@@ -32,6 +32,7 @@ import (
 	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache/kvblock"
 	"github.com/llm-d/llm-d-kv-cache/pkg/tokenization"
 	tokenizerTypes "github.com/llm-d/llm-d-kv-cache/pkg/tokenization/types"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	fwkrh "github.com/llm-d/llm-d-router/pkg/epp/framework/interface/requesthandling"
 )
@@ -97,11 +98,12 @@ func newVLLMHTTPRenderer(cfg *vllmConfig, modelName string) (*vllmHTTPRenderer, 
 	}, nil
 }
 
-// newRenderTransport returns an http.Transport tuned for the render endpoint:
-// HTTP/2 is disabled (vLLM doesn't support it) and the idle-connection pool
-// is sized for the in-pod sidecar case while still being reasonable for a
-// dedicated render Service.
-func newRenderTransport() *http.Transport {
+// newRenderTransport returns an http.RoundTripper backed by an http.Transport
+// tuned for the render endpoint: HTTP/2 is disabled (vLLM doesn't support it)
+// and the idle-connection pool is sized for the in-pod sidecar case while still
+// being reasonable for a dedicated render Service. The transport is wrapped
+// with otelhttp so outbound requests carry W3C trace context.
+func newRenderTransport() http.RoundTripper {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.MaxIdleConns = 0
 	t.MaxIdleConnsPerHost = 16
@@ -110,7 +112,7 @@ func newRenderTransport() *http.Transport {
 	// not enough — clearing TLSNextProto prevents ALPN-negotiated h2 too.
 	t.ForceAttemptHTTP2 = false
 	t.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
-	return t
+	return otelhttp.NewTransport(t)
 }
 
 func parseHTTPDuration(s string, def time.Duration) (time.Duration, error) {
