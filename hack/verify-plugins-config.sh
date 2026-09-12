@@ -106,7 +106,7 @@ for chart in llm-d-router-gateway llm-d-router-standalone; do
   diff -u <(printf 'apiVersion: llm-d.ai/v1alpha1\nkind: EndpointPickerConfig\n') "${TEMP_DIR}/raw.yaml"
   grep -Fq -- '"/config/extra-plugins.yaml"' "${output}"
 
-  for invalid in '"raw YAML"' '[{"type":"queue-scorer"}]'; do
+  for invalid in '"raw YAML"' '""' '[{"type":"queue-scorer"}]' '[]' 'false' '0'; do
     if "${HELM}" template plugins-test "${chart_path}" "${args[@]}" \
       --set-json "router.epp.pluginsConfig=${invalid}" > "${output}" 2> "${TEMP_DIR}/error.log"; then
       echo "Accepted non-map pluginsConfig: ${invalid}"

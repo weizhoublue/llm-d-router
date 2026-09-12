@@ -1,8 +1,9 @@
 {{- define "llm-d-epp.config" -}}
-{{- $pluginsConfig := .Values.router.epp.pluginsConfig | default dict }}
-{{- if not (kindIs "map" $pluginsConfig) }}
+{{- $pluginsConfigValue := .Values.router.epp.pluginsConfig }}
+{{- if and (not (kindIs "invalid" $pluginsConfigValue)) (not (kindIs "map" $pluginsConfigValue)) }}
 {{- fail "router.epp.pluginsConfig must be a map" }}
 {{- end }}
+{{- $pluginsConfig := $pluginsConfigValue | default dict }}
 {{- $pluginsConfigFile := .Values.router.epp.pluginsConfigFile | default "default-plugins.yaml" }}
 {{- $pluginsCustomConfig := .Values.router.epp.pluginsCustomConfig | default dict }}
 {{- if and $pluginsConfig (hasKey $pluginsCustomConfig $pluginsConfigFile) }}
