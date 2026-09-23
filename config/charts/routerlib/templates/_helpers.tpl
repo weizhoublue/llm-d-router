@@ -471,6 +471,24 @@ Helper to check if priorityRouting is enabled across chart contexts.
 {{- if and (kindIs "bool" $enabled) $enabled }}true{{ end -}}
 {{- end -}}
 
+{{- define "llm-d-epp.leaderElectionEnabled" -}}
+{{- $flags := .Values.router.epp.flags | default dict -}}
+{{- if hasKey $flags "ha-enable-leader-election" -}}
+  {{- $value := toString (index $flags "ha-enable-leader-election") -}}
+  {{- if has $value (list "true" "True" "TRUE" "1" "t" "T") -}}
+    true
+  {{- else if has $value (list "false" "False" "FALSE" "0" "f" "F") -}}
+    false
+  {{- else -}}
+    {{- fail (printf "router.epp.flags.ha-enable-leader-election must be a boolean, got %q" $value) -}}
+  {{- end -}}
+{{- else -}}
+  {{- $gkePB := include "llm-d-router.gkePreferredBackends" . | fromYaml | default dict -}}
+  {{- $isPriorityRouting := eq (include "llm-d-router.priorityRouting.enabled" .) "true" -}}
+  {{- and (gt (.Values.router.epp.replicas | int) 1) (not $gkePB.enabled) (not $isPriorityRouting) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "llm-d-router.priorityRouting.primaryReplicas" -}}
 {{- $router := .Values.router | default dict -}}
 {{- $proxy := index $router "proxy" | default dict -}}

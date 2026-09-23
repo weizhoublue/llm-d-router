@@ -12,8 +12,8 @@ epp:
   # Overrides the EPP Deployment's spec.strategy. Unset means `type: Recreate`,
   # which is the recommended default for the stateful single-active-replica pattern.
   #
-  # With replicas > 1 the chart enables leader election, and standby replicas stay
-  # NotReady by design, so a `Recreate` Deployment never reports Available=True and
+  # With replicas > 1 and leader election enabled, standby replicas stay NotReady
+  # by design, so a `Recreate` Deployment never reports Available=True and
   # `helm --wait` blocks until it times out. Setting a RollingUpdate strategy whose
   # maxUnavailable covers the standbys lets Helm consider the release ready while
   # keeping standbys out of the Service (they are still NotReady, so they are not
@@ -282,4 +282,3 @@ latencyPredictor:
     LATENCY_MAX_SAMPLE_SIZE: "10000"
     LATENCY_MAX_CONCURRENT_DISPATCHES: "36"
     LATENCY_COALESCE_WINDOW_MS: "1"
-

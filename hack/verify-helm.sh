@@ -304,6 +304,77 @@ if ! grep -q -- '--secure-serving=false' "${flag_render_output}"; then
   exit 1
 fi
 
+echo "Verifying EPP leader-election RBAC follows the effective flag..."
+for chart in llm-d-router-gateway llm-d-router-standalone; do
+  for mode in default-single default-multi disabled-multi disabled-multi-string enabled-single enabled-single-string; do
+    replicas=1
+    expected_rbac=false
+    flag_override=""
+    expected_flag=""
+    case "${mode}" in
+      default-multi)
+        replicas=2
+        expected_rbac=true
+        expected_flag="--ha-enable-leader-election"
+        ;;
+      disabled-multi)
+        replicas=2
+        flag_override="--set router.epp.flags.ha-enable-leader-election=false"
+        expected_flag="--ha-enable-leader-election=false"
+        ;;
+      disabled-multi-string)
+        replicas=2
+        flag_override="--set-string router.epp.flags.ha-enable-leader-election=false"
+        expected_flag="--ha-enable-leader-election=false"
+        ;;
+      enabled-single)
+        flag_override="--set router.epp.flags.ha-enable-leader-election=true"
+        expected_rbac=true
+        expected_flag="--ha-enable-leader-election=true"
+        ;;
+      enabled-single-string)
+        flag_override="--set-string router.epp.flags.ha-enable-leader-election=1"
+        expected_rbac=true
+        expected_flag="--ha-enable-leader-election=1"
+        ;;
+    esac
+    render_output="${TEMP_DIR}/${chart}-${mode}-leader-election.yaml"
+    ${HELM} template "${mode}" "${SCRIPT_ROOT}/config/charts/${chart}" \
+      --set router.modelServers.matchLabels.app=llm-instance-gateway \
+      --set router.epp.replicas="${replicas}" ${flag_override} > "${render_output}" || exit 1
+    for kind in Role RoleBinding; do
+      resource_name="${mode}-epp-leader-election"
+      if [ "${kind}" == "RoleBinding" ]; then
+        resource_name="${resource_name}-binding"
+      fi
+      if grep -A3 -- "^kind: ${kind}$" "${render_output}" | grep -q -- "^  name: ${resource_name}$"; then
+        actual_rbac=true
+      else
+        actual_rbac=false
+      fi
+      if [ "${actual_rbac}" != "${expected_rbac}" ]; then
+        echo "${chart} ${mode}: unexpected leader-election ${kind}"
+        exit 1
+      fi
+    done
+    if [ -n "${expected_flag}" ] && ! grep -q -- "${expected_flag}" "${render_output}"; then
+      echo "${chart} ${mode}: expected EPP flag ${expected_flag} was not rendered"
+      exit 1
+    fi
+    if [ -z "${expected_flag}" ] && grep -q -- '--ha-enable-leader-election' "${render_output}"; then
+      echo "${chart} ${mode}: unexpected EPP leader-election flag"
+      exit 1
+    fi
+  done
+done
+
+if ${HELM} template invalid-leader-election "${SCRIPT_ROOT}/config/charts/llm-d-router-gateway" \
+  --set router.modelServers.matchLabels.app=llm-instance-gateway \
+  --set-string router.epp.flags.ha-enable-leader-election=invalid > /dev/null 2>&1; then
+  echo "Helm template unexpectedly accepted a non-boolean leader-election flag"
+  exit 1
+fi
+
 if ! HELM="${HELM}" bash "${SCRIPT_ROOT}/hack/verify-plugins-config.sh"; then
   echo "Structured plugins configuration validation failed"
   exit 1
