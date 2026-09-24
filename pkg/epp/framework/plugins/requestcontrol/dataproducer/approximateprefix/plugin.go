@@ -303,7 +303,7 @@ func (p *dataProducer) PreRequest(ctx context.Context, request *fwksched.Inferen
 	blockSize := p.GetBlockSize(primaryProfileResult.TargetEndpoints)
 	const averageCharactersPerToken = 4
 	recordPrefixCacheMatch(p.typedName.Name, p.typedName.Type, matchLen*blockSize*averageCharactersPerToken, total*blockSize*averageCharactersPerToken)
-	if request.Body != nil {
+	if request.Body != nil && request.Body.TokenizedRequest != nil {
 		prefixmetrics.RecordPrediction(p.typedName.Name, p.typedName.Type,
 			state.PredictedCachedTokens[ServerID(targetEndpoint.GetMetadata().ID)],
 			request.Body.TokenizedRequest.TokenCount())

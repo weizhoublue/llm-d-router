@@ -103,6 +103,31 @@ func TestPreRequestRecordsPrediction(t *testing.T) {
 	assert.Equal(t, float64(2*len(tokens)), metricSum(t, promptTokensMetric, name))
 }
 
+func TestPreRequestSkipsPredictionForRenderRequest(t *testing.T) {
+	const name = "approx-predicted-render"
+	p := producerForPrediction(t, name, 64)
+	endpoints, result := endpointAndResult()
+
+	runPredictionWithBody(t, p, "render", &fwkrh.InferenceRequestBody{RenderRequest: true}, endpoints, result)
+
+	families, err := ctrlmetrics.Registry.Gather()
+	require.NoError(t, err)
+	for _, metricName := range []string{predictedCachedTokensMetric, promptTokensMetric} {
+		for _, family := range families {
+			if family.GetName() != metricName {
+				continue
+			}
+			for _, metric := range family.GetMetric() {
+				for _, label := range metric.GetLabel() {
+					if label.GetName() == "plugin_name" && label.GetValue() == name {
+						assert.Zero(t, metric.GetHistogram().GetSampleCount())
+					}
+				}
+			}
+		}
+	}
+}
+
 // A prompt whose length is not a multiple of the block size still hashes its
 // trailing partial block, so the block-to-token conversion has to be bounded by
 // the prompt length or a full match reports more tokens than the prompt holds.
