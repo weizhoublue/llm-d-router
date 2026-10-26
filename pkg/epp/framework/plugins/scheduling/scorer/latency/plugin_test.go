@@ -103,6 +103,63 @@ func TestScoreNegativeOnly(t *testing.T) {
 	t.Logf("pod1 score=%f, pod2 score=%f", s1, s2)
 }
 
+func TestScoreMissingPrediction(t *testing.T) {
+	for _, strategy := range []HeadroomSelectionStrategy{StrategyLeast, StrategyMost} {
+		t.Run(string(strategy), func(t *testing.T) {
+			for _, tc := range []struct {
+				name       string
+				ttft       [2]float64
+				tpot       [2]float64
+				dispatched int
+			}{
+				{
+					name: "positive", ttft: [2]float64{100, 30},
+					tpot: [2]float64{20, 5}, dispatched: 1,
+				},
+				{
+					name: "zero", ttft: [2]float64{0, 0},
+					tpot: [2]float64{0, 0}, dispatched: 1,
+				},
+				{
+					name: "negative idle", ttft: [2]float64{-10, -100},
+					tpot: [2]float64{-5, -30},
+				},
+				{
+					name: "negative busy", ttft: [2]float64{-10, -100},
+					tpot: [2]float64{-5, -30}, dispatched: 1,
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cfg := noExploreConfig()
+					cfg.HeadroomSelectionStrategy = strategy
+					scorer := NewPlugin(cfg)
+					endpoints := make([]fwksched.Endpoint, 2, 3)
+					endpoints[0] = makeLatencyScorerEndpoint("pod1", 0.5, 0, 1)
+					endpoints[1] = makeLatencyScorerEndpoint("pod2", 0.5, 0, 1)
+					for i, ep := range endpoints {
+						ep.Put(attrlatency.LatencyPredictionInfoDataKey,
+							attrlatency.NewLatencyPredictionInfo(tc.ttft[i] >= 0, tc.tpot[i] >= 0,
+								tc.ttft[i], tc.tpot[i], 0, 0, tc.dispatched))
+					}
+					want := scorer.Score(context.Background(), nil, endpoints)
+					missing := makeLatencyScorerEndpoint("missing", 0, 0, 0)
+					scores := scorer.Score(context.Background(), nil, append(endpoints, missing))
+
+					if score, ok := scores[missing]; !ok || score != 0 {
+						t.Errorf("endpoint without a prediction should keep a zero score, got %f (present=%v)", score, ok)
+					}
+					for _, ep := range endpoints {
+						if scores[ep] <= 0 || scores[ep] != want[ep] {
+							t.Errorf("%s score=%f, want unchanged positive score %f",
+								ep.GetMetadata().ID.Name, scores[ep], want[ep])
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestScoreTierSplit(t *testing.T) {
 	// The scorer expects upstream filters to have separated tiers.
 	// Test with only positive endpoints (typical after tier filter selects positive).

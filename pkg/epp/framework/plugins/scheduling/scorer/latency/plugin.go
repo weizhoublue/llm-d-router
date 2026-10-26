@@ -184,7 +184,10 @@ func (s *Plugin) Score(ctx context.Context, _ *fwksched.InferenceRequest, endpoi
 	// is present, only positive endpoints are scored (negative get score 0).
 	var positive, negative []epData
 	for _, d := range data {
-		if d.info != nil && (d.ttftHeadroom < 0 || d.tpotHeadroom < 0) {
+		if d.info == nil {
+			continue
+		}
+		if d.ttftHeadroom < 0 || d.tpotHeadroom < 0 {
 			negative = append(negative, d)
 		} else {
 			positive = append(positive, d)
