@@ -384,7 +384,9 @@ func (z *zmqSubscriber) canAttemptReplay() bool {
 }
 
 func (z *zmqSubscriber) invalidateReplay(topic string) {
-	z.resetForSource(topic)
+	if z.hasLastSeq {
+		z.resetForSource(topic)
+	}
 	z.lastSeq = 0
 	z.hasLastSeq = false
 	z.lastReplayFailure = time.Now()
@@ -561,6 +563,7 @@ func (z *zmqSubscriber) requestReplay(ctx context.Context, startSeq uint64) bool
 			}
 			// A bounded buffer may no longer contain the start of a cold stream.
 			if startSeq == 0 && replayed == 0 {
+				z.resetForSource(topic)
 				expectedSeq = seq
 			}
 			if seq != expectedSeq {
