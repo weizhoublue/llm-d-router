@@ -136,7 +136,7 @@ func newPassthroughProxy(logger logr.Logger, gatewayURL *url.URL, transport http
 			if errors.As(err, &maxBytesErr) {
 				logger.V(logutil.DEFAULT).Info("passthrough proxy: request body exceeds cap", "capBytes", maxBytesErr.Limit)
 				if isOpenAIPassthroughPath(req.URL.Path) {
-					rejectInference(logger, w, reqcommon.DetectAPIType(req.URL.Path), http.StatusRequestEntityTooLarge, "request body too large")
+					rejectInference(logger, w, reqcommon.APITypeChatCompletions, http.StatusRequestEntityTooLarge, "request body too large")
 				} else {
 					w.WriteHeader(http.StatusRequestEntityTooLarge)
 				}
@@ -155,7 +155,7 @@ func newPassthroughProxy(logger logr.Logger, gatewayURL *url.URL, transport http
 				logger.Error(err, "passthrough proxy error")
 			}
 			if isOpenAIPassthroughPath(req.URL.Path) {
-				rejectInference(logger, w, reqcommon.DetectAPIType(req.URL.Path), http.StatusBadGateway, fmt.Sprintf("internal error (request_id: %s)", requestID))
+				rejectInference(logger, w, reqcommon.APITypeChatCompletions, http.StatusBadGateway, fmt.Sprintf("internal error (request_id: %s)", requestID))
 			} else {
 				w.WriteHeader(http.StatusBadGateway)
 			}
@@ -163,15 +163,18 @@ func newPassthroughProxy(logger logr.Logger, gatewayURL *url.URL, transport http
 	}
 }
 
-// Match exact endpoints because DetectAPIType treats unknown paths as OpenAI.
+// Keep an explicit allowlist so unknown paths retain empty error responses.
 func isOpenAIPassthroughPath(path string) bool {
-	switch path {
-	case reqcommon.PathChatCompletions, reqcommon.PathCompletions, reqcommon.PathResponses,
-		reqcommon.PathModels, reqcommon.PathEmbeddings:
-		return true
-	default:
-		return false
+	path = strings.TrimSuffix(strings.TrimSpace(path), "/")
+	for _, endpoint := range []string{
+		reqcommon.PathChatCompletions, reqcommon.PathCompletions, reqcommon.PathResponses,
+		reqcommon.PathModels, reqcommon.PathEmbeddings,
+	} {
+		if strings.HasSuffix(path, strings.TrimPrefix(endpoint, "/v1")) {
+			return true
+		}
 	}
+	return false
 }
 
 // passthroughErrorLogWriter adapts httputil.ReverseProxy's *log.Logger sink to
